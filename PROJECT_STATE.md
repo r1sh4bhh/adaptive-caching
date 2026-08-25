@@ -14,18 +14,26 @@
 ## §1 — SNAPSHOT
 
 ```
-LAST UPDATED : 2026-08-25
+LAST UPDATED : 2026-08-26
 UPDATED BY   : gptnmn
-GIT TAG      : (none — P1 not started)
-BUILD PHASE  : P1  🔵 IN PROGRESS
+GIT TAG      : p01-complete
+BUILD PHASE  : P2  🔵 IN PROGRESS
 ACADEMIC     : Phase 3 (Methodology & Design)
 NEXT REVIEW  : R1 — Design
 BLOCKERS     : none
 ```
 
 **Where we are in one sentence:**
-> Design is complete (`context.md`). No code written yet. Next action is to
-> scaffold P1: types, interfaces, event bus, object store, metrics, config, CI.
+> P1 is complete. The frozen interfaces (`Cache`, `EvictionPolicy`, `Event`,
+> `Frame`, `Request`, `Entry`) and a non-blocking, bounded, droppable event bus
+> are in place, along with config, metrics, the byte-capacity object store and a
+> nil-safe cache core. `go build`, `go vet`, `go test` and
+> `scripts/lint-arch.sh` pass; `go test -race` passes in CI on Linux.
+> `./adaptive-cache --config configs/default.yaml --duration 5s` prints `Frame`
+> JSON at 10 Hz.
+
+**Next:** P2 — baseline policies (LRU, LFU, Clock) behind the frozen
+`EvictionPolicy` interface, plus a policy registry.
 
 ---
 
@@ -51,14 +59,16 @@ Legend: ⬜ not started · 🔵 in progress · ✅ complete · ⏭️ skipped
 
 | # | Phase | Status | Tag | New | Touch | Est | Review |
 |---|---|---|---|---|---|---|---|
-| P1 | Skeleton & Event Bus | 🔵 | — | 14 | 0 | 1w | R2 |
+| P1 | Skeleton & Event Bus | ✅ | p01-complete | 14 | 0 | 1w | R2 |
 | P2 | Baselines I (LRU/LFU/Clock) | ⬜ | — | 8 | 2 | 1w | R2 |
 | P3 | Traces & Benchmark | ⬜ | — | 14 | 2 | 1w | R2 |
+| P3.5 | Early TUI (policy race) | ⬜ | — | 6 | 2 | 2d | R2 |
 | P4 | ARC, W-TinyLFU, Shadows | ⬜ | — | 11 | 2 | 2w | R2 |
 | P5 | Feature Extraction | ⬜ | — | 8 | 1 | 1w | R3 |
 | P6 | Workload Detector | ⬜ | — | 6 | 2 | 1w | R3 |
+| P6.5 | TUI increment (detection) | ⬜ | — | 0 | 2 | 1d | R3 |
 | P7 | **Adaptive Engine** ⭐ | ⬜ | — | 9 | 3 | 2w | R3 |
-| P8 | TUI + Report Generator | ⬜ | — | 8 | 1 | 1w | R3 |
+| P8 | Observability | ⬜ | — | 3 | 4 | 3d | R4 |
 | P9 | Size-Aware Eviction | ⬜ | — | 7 | 3 | 1w | R4 |
 | P10 | Online Tuning | ⬜ | — | 6 | 2 | 1w | R4 |
 | P11 | **Evaluation** ⭐ | ⬜ | — | 9 | 1 | 2w | R4 |
@@ -66,7 +76,8 @@ Legend: ⬜ not started · 🔵 in progress · ✅ complete · ⏭️ skipped
 | P13 | Multi-Tier L1→L2 | ⬜ | — | 8 | 2 | 1.5w | R5 |
 | P14 | Web UI & Docs | ⬜ | — | 10 | 2 | 2w | R5 |
 
-**Totals:** ~124 new files (incl. tests), ~19 weeks.
+**Totals:** 16 phases (P1–P14 + P3.5 + P6.5), ~124 new files (incl. tests),
+~19 weeks. Net schedule change vs prior single-pass P8 TUI: **~+1 day**.
 **Critical path:** P1 → P2 → P3 → P4 → P5 → P6 → **P7** → **P11**.
 **Cut order if short on time:** P13 → P14-web → P10 → learned selector.
 **Never cut:** P11.
@@ -79,7 +90,7 @@ Each card is a self-contained work order. Give the card + `context.md` to any AI
 
 ---
 
-### 🔵 P1 — SKELETON & EVENT BUS
+### ✅ P1 — SKELETON & EVENT BUS
 
 **Goal:** Frozen interfaces + working event bus. No caching logic yet.
 **Why first:** Every later phase implements these interfaces. Retrofitting the
@@ -260,6 +271,37 @@ with deep learning (❌ — rules first); **fabricating detection accuracy**
 
 ---
 
+### ⬜ P6.5 — TUI INCREMENT (detection)
+
+**Goal:** Make workload classification and detection delay visible. Extends the
+P3.5 dashboard — creates no new files.
+
+**CREATE:** none.
+
+**TOUCH**
+```
+tui/panels.go   add classified-workload line, confidence readout, feature bars
+                (reuse-distance, entropy, burstiness, working-set, size-variance)
+tui/chart.go    render the detected-transition marker alongside the existing
+                ground-truth marker, and label the Δ between them
+```
+
+**DONE WHEN**
+- Dashboard shows current classified workload + confidence, updating live
+- Feature bars visibly change signature as the workload changes
+- Both markers appear on the chart with the measured Δ labelled
+
+**TRAPS:** rewriting the P3.5 dashboard instead of extending it; showing the
+ground-truth workload where the *classified* workload belongs — the detector
+must not see ground truth; that data is only used to draw the comparison marker.
+
+**REVIEW TALKING POINT**
+> "The system now sees the transition. The red marker is when the workload
+> actually changed — ground truth from the generator. The amber marker is when
+> our detector noticed. That gap is our measured detection delay."
+
+---
+
 ### ⬜ P7 — ADAPTIVE ENGINE ⭐ THE CONTRIBUTION
 
 **CREATE**
@@ -288,27 +330,37 @@ switches (they explain periods of stability — you'll be asked).
 
 ---
 
-### ⬜ P8 — TUI + REPORT GENERATOR
+### ⬜ P8 — OBSERVABILITY
 
-**Goal:** Make the loop visible. **The report generator matters more than the TUI.**
+**Goal:** Final observability increment and report output for review artifacts.
+**The report generator matters more than the TUI.**
 
 **CREATE**
 ```
-tui/dashboard.go · panels.go · chart.go     bubbletea, subscribes to Frames
-server/frames.go                            FrameAggregator @10Hz
-scripts/report/figures.py                   all 12 figures (context.md §7.5)
-scripts/report/report.py                    JSON → Markdown/PDF
+scripts/report/figures.py     all 12 figures (context.md §7.5)
+scripts/report/report.py      JSON → Markdown/PDF
 scripts/report/requirements.txt
-docs/RESULTS.md                             ← starts as a stub, fills in P11
+docs/RESULTS.md               stub — already scaffolded; extend it
 ```
-**TOUCH:** `cmd/adaptive-cache/main.go` (`--tui`)
+
+**TOUCH**
+```
+server/frames.go
+tui/dashboard.go
+tui/panels.go
+tui/chart.go
+```
+
+**Note:** **The TUI already exists from P3.5/P6.5. This phase extends it with
+the policy timeline, decision card, oracle line, and shadow scoreboard. Do not
+rewrite it.**
 
 **DONE WHEN:** `./adaptive-cache --tui --scenario=showcase.yaml` shows live
 workload/policy/hit-rate/timeline/decision; `make report` emits all figures.
 
 **TRAPS:** `tui/` imported by `cache/` (lint must fail); TUI blocking on a slow
-render (drop frames); building the *web* UI here (that's P14 — TUI is your
-demo-day insurance).
+render (drop frames); rewriting the existing TUI instead of extending it;
+building the *web* UI here (that's P14 — TUI is your demo-day insurance).
 
 ---
 
@@ -524,6 +576,14 @@ Append-only. Anything that changes how future phases must be built.
 | 2026-08-25 | P0 | Dual detection window (feature 1000 / detect 50) | Resolves "stable stats" vs "detect in 10–20 req" tension |
 | 2026-08-25 | P0 | Shadow caches at P4 | Upgrades claim from "beats LRU" to "approaches hindsight-optimal" |
 | 2026-08-25 | P0 | TUI at P8, web at P14 | TUI = 90% of demo value at 20% cost; insurance for demo day |
+| 2026-08-25 | P0 | TUI split into P3.5 → P6.5 → P8 increments | Demo-ready 5 weeks earlier for +1 day total; P3.5 demonstrates the problem, which is a stronger R2 artifact than a static results table |
+| 2026-08-25 | P1 | `types.Value` is a concrete `[]byte`, not an interface | Byte accounting is exact and allocation-free; an interface value would need reflection or a caller-supplied size that can silently disagree with reality, and would add 16 bytes of header per entry against a <5% metadata-overhead target |
+| 2026-08-25 | P1 | Latency histogram is log-linear (4 significant bits, 976 buckets, ~8 KB) rather than exact or HDR-library-backed | Lock-free and allocation-free on the request path with ≤6.25% quantile error; an allocating or locking histogram would perturb the very latencies it measures. Mean is kept exactly from a running sum |
+| 2026-08-25 | P1 | Bus subscribers are named, with per-subscriber drop counters; `Publish` drops on a full channel | Observability on the observability: a stalled consumer is visible as a counter rather than as silent backpressure that would corrupt every latency measurement |
+| 2026-08-25 | P1 | The store reports `ErrCapacityExceeded` instead of evicting; only the policy chooses victims | Keeps "the policy holds metadata, the store holds objects" true at the type level, which is what makes P7's state-preserving switching possible |
+| 2026-08-25 | P1 | Byte-hit-rate fetch bytes are recorded on `Put`, not on a missing `Get` | The frozen `Cache.Get` signature carries no size, and the cache cannot know how large a missing object is until it is inserted |
+| 2026-08-25 | P1 | `Entry` omits the `Tier` and `ExpiresAt` fields sketched in context.md §5.5 | Nothing needs them before P13; every field costs metadata overhead per cached object. They will be added with an ADR when tiers land |
+| 2026-08-26 | P1 | `PROJECT_STATE.md` was truncated by an agent rewrite and subsequently restored from the author's local copy | This file is edited in place, never regenerated |
 
 ---
 
@@ -535,6 +595,8 @@ Append-only. Anything that changes how future phases must be built.
 | 2 | Is real ARC feasible in the P4 budget, or simplify? | P4 | if simplified, state exactly what in LIMITATIONS.md |
 | 3 | Which size-aware formula wins? | P9 | empirical — do not assume |
 | 4 | Does promotion in L1→L2 actually help? | P13 | benchmark it; may be a negative result |
+| 5 | Why do latency percentiles (`p50`, `p95`, `p99`) read zero in `Frame` output at ~9.7M ops/sec with a nil policy? This is plausibly sub-bucket flooring, but RQ targets include a −25% p99 latency claim. | P11 | verify real percentile values during P2, when policy work makes operations measurably slower, and before P11 |
+| 6 | Can metadata overhead meet the <5% target? The nil-policy floor is ~15.6% (318,890 bytes metadata against 2,048,000 bytes payload, 1 KB synthetic objects), before policies add their own metadata. | P11 | revisit the `Entry` layout or the target itself via an ADR if needed |
 
 ---
 
