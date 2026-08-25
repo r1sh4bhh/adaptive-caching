@@ -1,0 +1,23 @@
+# Go
+/adaptive-cache
+/bench
+/analyze
+*.test
+*.out
+vendor/
+
+# Operating systems and editors
+.DS_Store
+.idea/
+.vscode/
+
+# Python tooling
+__pycache__/
+venv/
+
+# Benchmark output
+results/*
+!results/README.md
+!results/.gitkeep
+!results/**/
+!results/**/summary.json
