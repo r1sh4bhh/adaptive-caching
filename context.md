@@ -1709,11 +1709,13 @@ and the final presentation.
 | **P1 — Skeleton** | `types/`, `Cache` + `EvictionPolicy` interfaces, byte-capacity object store, **event bus**, **frame aggregator**, metrics collector, YAML config + feature flags, Makefile, CI, arch-lint | `go test ./...` green; no-op cache counting hits/misses; frames dumped to stdout | 1 wk |
 | **P2 — Baselines I** | LRU, LFU (freq buckets + decay), Clock. Table-driven tests vs known eviction sequences | `bench --policy=lru --trace=x.csv` prints hit rate | 1 wk |
 | **P3 — Traces** | `TraceSource` interface, all 6 synthetic generators (seeded), CSV loader, **scenario YAML replay + ScenarioMarkEvent**, benchmark runner, CSV/JSON output | Same trace replayed across 3 policies → results table. **The demo's data layer is complete before any UI exists.** | 1 wk |
+| **P3.5 — Early TUI** ⭐ | `FrameAggregator` (moved forward from P8), bubbletea dashboard: live policy race (LRU/LFU/Clock on one seeded stream), sparkline, ground-truth segment banner, pause/replay keys | **First visible artifact — demonstrates the PROBLEM before the solution exists.** Panel watches all three fixed policies collapse at a workload transition. | 2 d |
 | **P4 — Baselines II + Shadows** | ARC (real T1/T2/B1/B2), W-TinyLFU (count-min + doorkeeper + window), **shadow caches + Bélády oracle** | 5 baselines × 6 workloads matrix + oracle upper bound | 1.5 wk |
 | **P5 — Features** | Feature extractor: reuse distance, entropy, CV, working-set estimate, size stats. Each independently unit-tested | `analyze trace.csv` prints a feature vector | 1 wk |
 | **P6 — Detector** | Rule-based classifier, confidence, dual windowing. Validate: generated temporal ⇒ classified temporal. **Detection-delay measurement vs ScenarioMark** | Classification timeline + measured detection delay → **RQ3** | 1 wk |
+| **P6.5 — TUI increment** | Extend `tui/panels.go`: classified workload, confidence, feature bars, **detected-transition marker beside the ground-truth marker** | Δ between actual and detected transition visible on screen → **RQ3 made visual** | 1 d |
 | **P7 — Adaptive engine** ⭐ | Selector (config-driven map), state-preserving switcher, all guards (hysteresis/residency/cooldown/gain), decision logging incl. `GuardsFailed` | **First real result: adaptive vs fixed on mixed workload → RQ1, RQ2** | 2 wk |
-| **P8 — Observability** | Event-bus subscribers → **TUI dashboard** (bubbletea) + **report generator** (matplotlib) | The TUI screen; all PART 7.5 figures generated from JSON | 1 wk |
+| **P8 — Observability** | **Final TUI increment** (policy timeline, decision card, oracle line, shadow scoreboard) + **report generator** (matplotlib) | Complete TUI screen (PART 11.3); all PART 7.5 figures generated from JSON | 3 d |
 | **P9 — Size-aware** | `SizeAwareScorer` strategies, `EvictUntil`, byte hit rate, heterogeneous size distributions | Ablation E: size-aware vs naive → **RQ6** | 1 wk |
 | **P10 — Tuning** | Parameter registry, A/B sweep tuner, convergence tracking | Ablation D: adaptive+tuning vs adaptive → **RQ7** | 1 wk |
 | **P11 — Evaluation** ⭐ | Multi-run harness, mean/CI/p95/p99, ablations A–H, real traces (or documented substitutes), regret analysis, optional learned selector | **`docs/RESULTS.md` with real numbers** | 2 wk |
@@ -1724,32 +1726,41 @@ and the final presentation.
 ## 8.2 Dependency graph
 
 ```
-P1 ──┬─► P2 ──┬─► P3 ──┬─► P4 ──┬─► P5 ──► P6 ──► P7 ──┬─► P8
-     │        │        │        │                      │
-     │        │        │        └── shadows ───────────┤
-     │        │        │                               │
-     │        │        └── scenarios ──────────────────┤
-     │        │                                        │
-     │        └────────────────────────────────────────┤
-     │                                                 │
-     └── event bus (everything depends on this) ───────┤
-                                                       │
-                              ┌────────────────────────┤
-                              ▼                        ▼
-                         P9 (size)              P10 (tuning)
-                              │                        │
-                              └────────┬───────────────┘
-                                       ▼
-                                  P11 (evaluation)  ⭐ THE GRADE
-                                       │
-                              ┌────────┼────────┐
-                              ▼        ▼        ▼
-                            P12      P13      P14
-                        (concur)   (tiers)  (web UI)
+P1 ──┬─► P2 ──► P3 ──┬─► P4 ──► P5 ──► P6 ──┬─► P7 ──► P8
+     │               │                       │          ▲
+     │               │                       │          │
+     │               └─► P3.5 ───────────────┴─► P6.5 ──┘
+     │                    │                      │      │
+     │                    └── TUI, built ONCE in three additive
+     │                        increments — never rewritten
+     │
+     └── event bus (everything depends on this)
+
+     ┌──────────────── after P8 ────────────────┐
+     ▼                                          ▼
+   P9 (size)                             P10 (tuning)
+     │                                          │
+     └──────────────────┬───────────────────────┘
+                        ▼
+                   P11 (evaluation)  ⭐ THE GRADE
+                        │
+               ┌────────┼────────┐
+               ▼        ▼        ▼
+             P12      P13      P14
+         (concur)   (tiers)  (web UI)
+
+ TUI INCREMENTS (additive — extend tui/panels.go, never rewrite):
+   P3.5  policy race · sparkline · ground-truth segment banner
+   P6.5  + workload · confidence · features · detected marker
+   P8    + policy timeline · decision card · oracle · shadow scoreboard
 ```
 
 **Critical path to a defensible project: P1 → P7 → P11.** Everything else is
 enhancement. If time runs out, P12/P13/P14 are the ones to cut — never P11.
+
+**Earliest visible artifact: P3.5 (~week 4).** The TUI is built once across
+three additive increments (P3.5 → P6.5 → P8) totalling ~6 days, versus ~5 days
+for a single P8 build. One extra day buys demo-ready output five weeks sooner.
 
 ## 8.3 Rules that keep this AI-resumable
 
@@ -1946,11 +1957,29 @@ P1/P3/P8 already built everything underneath.
 
 | Option | Tech | Phase | Purpose |
 |---|---|---|---|
-| **A — TUI** ⭐ | bubbletea / termui | P8 | Single binary, no JS, no internet. **Insurance policy for demo day.** |
+| **A — TUI** ⭐ | bubbletea | P3.5 → P6.5 → P8 | Single binary, no JS, no internet. **Insurance policy for demo day.** Built in three additive increments so a demo exists from week 4. |
 | **B — Web** | `go:embed` SPA + uPlot | P14 | Interactive, impressive, injectable |
 | **C — Report** | Python + matplotlib | P8 | **Do this regardless.** It's what goes in the report. |
 
-## 11.3 TUI layout (P8)
+### TUI increment plan
+
+| Increment | After | Adds | Review talking point |
+|---|---|---|---|
+| **P3.5** | P3 | Live policy race (LRU/LFU/Clock, one seeded stream), ranked hit-rate bars, sparkline, ground-truth segment banner + transition marker, capacity/objects/p99, pause/replay/scenario keys | *"Three established policies, identical stream, seed 42. At request 20,000 the workload turns random and all three collapse — LRU from 87% to 34%. No fixed policy recovers. **That is the problem.**"* |
+| **P6.5** | P6 | Classified workload + confidence, feature bars, **detected-transition marker beside the ground-truth marker** | *"The system now sees the transition — here is the measured Δ between when it happened and when we detected it."* (RQ3, visual) |
+| **P8** | P7 | Policy timeline, decision card (PART 7.6), oracle line, shadow scoreboard | Full screen as drawn in PART 11.3 — the complete feedback loop |
+
+> **Build it once.** Each increment extends `tui/panels.go`; nothing is
+> rewritten. The P3.5 dashboard IS the P8 dashboard, minus panels that have no
+> data yet.
+
+## 11.3 TUI layout — final form (complete at P8)
+
+> This is the **P8** screen. At **P3.5** the same layout ships without the
+> policy timeline and decision card, with the header showing three racing
+> policies instead of one adaptive policy. At **P6.5** the workload/confidence
+> line and the detected-transition marker appear. Nothing is rewritten between
+> increments.
 
 ```
 ┌─ ADAPTIVE CACHE ────────────────────────── req 24,381 ─┐
@@ -2277,6 +2306,8 @@ Then begin **Build P1**.
 - Calling a recency+frequency score "ARC" (PART 5.1)
 - Ablations as `if` branches instead of config flags (PART 7.3)
 - Building the web UI before `docs/RESULTS.md` has real content (PART 11.7)
+- Rewriting the TUI at P6.5 or P8 instead of extending `tui/panels.go` (PART 11.2)
+- The TUI generating requests instead of selecting `(scenario, seed)` (PART 6.2)
 - Destroying and recreating the cache on policy switch (PART 5.4)
 - Starting with a deep-learning classifier (PART 5.2)
 - Claiming "lock-free" without a lock-free implementation (PART 9.3)
