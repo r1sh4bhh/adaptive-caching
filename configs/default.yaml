@@ -1,0 +1,55 @@
+# Default configuration for adaptive-cache.
+#
+# Every behaviour of the system is controlled from a file like this one.
+# Ablation studies are config permutations, never code branches: to answer
+# "what does adaptation buy us?", copy this file, set features.adaptive to
+# false, and re-run the same binary.
+
+cache:
+  # Capacity is in BYTES, not object count. Accepts human-readable sizes:
+  # decimal suffixes (KB/MB/GB/TB) are powers of 1000, binary suffixes
+  # (KiB/MiB/GiB/TiB) are powers of 1024, and a bare number is bytes.
+  capacity: 100MB
+
+  # Eviction policy to install. P1 ships no policies; "none" runs the cache
+  # with a nil policy, which still admits objects while capacity allows and
+  # still records hits, misses and events.
+  policy: none
+
+events:
+  # Default per-subscriber channel capacity on the event bus. Publish never
+  # blocks: when a subscriber's channel is full its events are dropped and
+  # counted, so a slow consumer can never backpressure the cache.
+  bus_buffer: 1024
+
+  # The metrics collector must be lossless, so it gets a much larger buffer
+  # and a dedicated draining goroutine. Drops here are a bug worth failing a
+  # test over.
+  metrics_buffer: 8192
+
+  # Buffer for the frame aggregator, which drains at frame_rate_hz.
+  frame_buffer: 256
+
+  # Emit one TypeRequest event per N requests. Aggregate counters live in the
+  # metrics collector, so this only affects the fine-grained event stream. At
+  # 500k req/s an unsampled bus would dominate the CPU profile.
+  request_sample_rate: 1000
+
+ui:
+  # Frames are aggregated server-side at a fixed tick rather than streaming
+  # every request to a dashboard. 10 Hz is ~5 KB/s and drives every chart.
+  frame_rate_hz: 10
+
+log:
+  # One of: debug, info, warn, error.
+  level: info
+
+features:
+  # All off in P1 — none of these subsystems exists yet. Flip them on as the
+  # corresponding phase lands, and use permutations of these five flags for
+  # the ablation matrix.
+  adaptive: false   # workload-driven policy selection and switching (P7)
+  tuning: false     # online parameter tuning (P10)
+  size_aware: false # size-aware scoring and batch eviction (P9)
+  tiers: false      # multi-tier hierarchy (P13)
+  shadow: false     # shadow caches and Belady oracle (P4)
