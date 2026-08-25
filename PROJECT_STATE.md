@@ -72,7 +72,7 @@ P3.5 dashboard — creates no new files.
 - `scripts/report/figures.py`
 - `scripts/report/report.py`
 - `scripts/report/requirements.txt`
-- `docs/RESULTS.md   (stub — already scaffolded; extend it)`
+- `docs/RESULTS.md (stub — already scaffolded; extend it)`
 
 **TOUCH**
 - `server/frames.go`
