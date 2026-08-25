@@ -1,10 +1,29 @@
 # PROJECT STATE
 
+## 1) Snapshot
+
+```
+GIT TAG      : p01-complete
+BUILD PHASE  : P2  🔵 IN PROGRESS
+LAST UPDATED : 2026-08-25
+```
+
+**Where we are:** P1 is complete. The frozen interfaces (`Cache`,
+`EvictionPolicy`, `Event`, `Frame`, `Request`, `Entry`) and a non-blocking,
+bounded, droppable event bus are in place, along with config, metrics, the
+byte-capacity object store and a nil-safe cache core. `go build`, `go vet`,
+`go test`, `go test -race` and `scripts/lint-arch.sh` all pass, and
+`./adaptive-cache --config configs/default.yaml --duration 5s` prints `Frame`
+JSON at 10 Hz.
+
+**Next:** P2 — the baseline policies (LRU, LFU, Clock) behind the frozen
+`EvictionPolicy` interface, plus a policy registry.
+
 ## 3) Phase ledger
 
 | Phase | Name | Status | Owner | New | Touch | Est. | Review |
 |---|---|---|---|---:|---:|---|---|
-| P1 | Skeleton | ⬜ | — | 11 | 0 | 1w | R1 |
+| P1 | Skeleton | ✅ | — | 11 | 0 | 1w | R1 |
 | P2 | Baselines I | ⬜ | — | 8 | 2 | 1w | R1 |
 | P3 | Traces | ⬜ | — | 9 | 3 | 1w | R2 |
 | P3.5 | Early TUI (policy race) | ⬜ | — | 6 | 2 | 2d | R2 |
@@ -87,3 +106,9 @@ P3.5 dashboard — creates no new files.
 | Date | Phase | Decision | Why |
 |---|---|---|---|
 | 2026-08-25 | P0 | TUI split into P3.5 → P6.5 → P8 increments | Demo-ready 5 weeks earlier for +1 day total; P3.5 demonstrates the problem, which is a stronger R2 artifact than a static results table |
+| 2026-08-25 | P1 | `types.Value` is a concrete `[]byte`, not an interface | Byte accounting is exact and allocation-free; an interface value would need reflection or a caller-supplied size that can silently disagree with reality, and would add 16 bytes of header per entry against a <5% metadata-overhead target |
+| 2026-08-25 | P1 | Latency histogram is log-linear (4 significant bits, 976 buckets, ~8 KB) rather than exact or HDR-library-backed | Lock-free and allocation-free on the request path with ≤6.25% quantile error; an allocating or locking histogram would perturb the very latencies it measures. Mean is kept exactly from a running sum |
+| 2026-08-25 | P1 | Bus subscribers are named, with per-subscriber drop counters; `Publish` drops on a full channel | Observability on the observability: a stalled consumer is visible as a counter rather than as silent backpressure that would corrupt every latency measurement |
+| 2026-08-25 | P1 | The store reports `ErrCapacityExceeded` instead of evicting; only the policy chooses victims | Keeps "the policy holds metadata, the store holds objects" true at the type level, which is what makes P7's state-preserving switching possible |
+| 2026-08-25 | P1 | Byte-hit-rate fetch bytes are recorded on `Put`, not on a missing `Get` | The frozen `Cache.Get` signature carries no size, and the cache cannot know how large a missing object is until it is inserted |
+| 2026-08-25 | P1 | `Entry` omits the `Tier` and `ExpiresAt` fields sketched in context.md §5.5 | Nothing needs them before P13; every field costs metadata overhead per cached object. They will be added with an ADR when tiers land |
