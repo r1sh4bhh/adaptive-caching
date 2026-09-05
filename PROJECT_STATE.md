@@ -14,26 +14,30 @@
 ## §1 — SNAPSHOT
 
 ```
-LAST UPDATED : 2026-08-26
-UPDATED BY   : gptnmn
-GIT TAG      : p01-complete
-BUILD PHASE  : P2  🔵 IN PROGRESS
+LAST UPDATED : 2026-09-05
+UPDATED BY   : rishabh (P2 implementation pass)
+GIT TAG      : p02-complete
+BUILD PHASE  : P3  ⬜ NEXT
 ACADEMIC     : Phase 3 (Methodology & Design)
 NEXT REVIEW  : R1 — Design
 BLOCKERS     : none
 ```
 
 **Where we are in one sentence:**
-> P1 is complete. The frozen interfaces (`Cache`, `EvictionPolicy`, `Event`,
-> `Frame`, `Request`, `Entry`) and a non-blocking, bounded, droppable event bus
-> are in place, along with config, metrics, the byte-capacity object store and a
-> nil-safe cache core. `go build`, `go vet`, `go test` and
-> `scripts/lint-arch.sh` pass; `go test -race` passes in CI on Linux.
-> `./adaptive-cache --config configs/default.yaml --duration 5s` prints `Frame`
-> JSON at 10 Hz.
+> P2 is complete. LRU, LFU (with amortised ageing) and Clock policies
+> are wired behind the frozen `EvictionPolicy` interface, with a
+> self-registering policy registry. The CLI now accepts `--policy
+> lru|lfu|clock` and config validation rejects unknown names at
+> load time. `go build`, `go vet`, `go test` and
+> `scripts/lint-arch.sh` pass; the test suite (39 policy tests + 7
+> edge-case test groups + the existing P1 suite) is green.
+> `./adaptive-cache --config configs/default.yaml --duration 5s`
+> prints `Frame` JSON at 10 Hz with `policy: lru` and a non-zero
+> eviction counter.
 
-**Next:** P2 — baseline policies (LRU, LFU, Clock) behind the frozen
-`EvictionPolicy` interface, plus a policy registry.
+**Next:** P3 — trace sources (synthetic generators + CSV loader) and
+the benchmark runner that drives the same trace across LRU, LFU and
+Clock for the first results table.
 
 ---
 
@@ -60,7 +64,7 @@ Legend: ⬜ not started · 🔵 in progress · ✅ complete · ⏭️ skipped
 | # | Phase | Status | Tag | New | Touch | Est | Review |
 |---|---|---|---|---|---|---|---|
 | P1 | Skeleton & Event Bus | ✅ | p01-complete | 14 | 0 | 1w | R2 |
-| P2 | Baselines I (LRU/LFU/Clock) | ⬜ | — | 8 | 2 | 1w | R2 |
+| P2 | Baselines I (LRU/LFU/Clock) | ✅ | p02-complete | 8 | 4 | 1w | R2 |
 | P3 | Traces & Benchmark | ⬜ | — | 14 | 2 | 1w | R2 |
 | P3.5 | Early TUI (policy race) | ⬜ | — | 6 | 2 | 2d | R2 |
 | P4 | ARC, W-TinyLFU, Shadows | ⬜ | — | 11 | 2 | 2w | R2 |
@@ -584,6 +588,11 @@ Append-only. Anything that changes how future phases must be built.
 | 2026-08-25 | P1 | Byte-hit-rate fetch bytes are recorded on `Put`, not on a missing `Get` | The frozen `Cache.Get` signature carries no size, and the cache cannot know how large a missing object is until it is inserted |
 | 2026-08-25 | P1 | `Entry` omits the `Tier` and `ExpiresAt` fields sketched in context.md §5.5 | Nothing needs them before P13; every field costs metadata overhead per cached object. They will be added with an ADR when tiers land |
 | 2026-08-26 | P1 | `PROJECT_STATE.md` was truncated by an agent rewrite and subsequently restored from the author's local copy | This file is edited in place, never regenerated |
+| 2026-09-05 | P2 | LFU "decay" is amortised ageing (every `floor(1/lambda)` accesses, halve all frequencies) rather than a background goroutine or per-access lazy decay | A background goroutine races with `Reset`/`Rebuild` and violates the "policy owns no threads" contract; per-access lazy decay is O(N) per access in the worst case and turns the cost of every hit into a function of cache size. Amortised ageing is O(1) per access in the typical case and the cost of each halving pass is a documented O(N) once every K accesses where `K = 1/lambda` |
+| 2026-09-05 | P2 | Clock's ring buffer grows by powers of two and is never shrunk | Shrinking would race with concurrent `OnAccess` calls and would silently under-report `MetadataBytes()` (which uses the ring capacity as the truthful measure of the slice's backing memory, including the unused tail). The wasted tail is real memory and is part of the policy's documented cost |
+| 2026-09-05 | P2 | `config/` is allowed to import `cache/policy/` so config validation can call `policy.Names()` and reject unknown policy names at load time | The existing `lint-arch.sh` rule is one-directional: only `cache/...` is guarded against importing `server/`, `tui/`, `benchmark/`, `adaptive/`, or `ui/`. `config → cache/policy` is permitted and is the right direction for fail-fast config validation |
+| 2026-09-05 | P2 | The policy registry uses a `sync.RWMutex` even though writes only happen at package init | Tests re-register policies (the test for the registry itself, and any future test that wants to inject a fake); an `RWMutex` makes those re-registrations race-safe without code changes |
+| 2026-09-05 | P2 | Policies expose no parameters unless the parameter genuinely changes the algorithm (LFU exposes `decay_lambda`; LRU and Clock expose none) | context.md §5.1 explicitly says LRU's recency weight is "only meaningful in hybrid scoring modes — if it does not meaningfully affect the implementation, do not expose it." The same rule applies to Clock's ref-bit width. Inventing parameters to populate the `ParamSet` interface would create a false sense of tunability |
 
 ---
 

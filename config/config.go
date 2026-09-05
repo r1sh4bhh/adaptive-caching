@@ -112,8 +112,9 @@ type Config struct {
 // count — heterogeneous object sizes are a core contribution of the project.
 type CacheConfig struct {
 	Capacity ByteSize `yaml:"capacity"`
-	// Policy names the eviction policy to install. P1 ships no policies, so
-	// "none" is the only valid value until P2 adds a registry.
+	// Policy names the eviction policy to install. P2 ships LRU, LFU
+	// and Clock; "none" runs with a nil policy. Unknown names are
+	// rejected at config load (see config/validate.go).
 	Policy string `yaml:"policy"`
 }
 
@@ -147,7 +148,7 @@ func Default() Config {
 	return Config{
 		Cache: CacheConfig{
 			Capacity: 100 * 1000 * 1000,
-			Policy:   "none",
+			Policy:   "lru",
 		},
 		Events: EventsConfig{
 			BusBuffer:         1024,

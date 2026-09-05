@@ -1,9 +1,12 @@
-// Command adaptive-cache is the P1 acceptance demo: it loads a config file,
-// constructs the cache with a nil policy, drives a trivial synthetic request
-// loop and prints a Frame as JSON at the configured rate (default 10 Hz).
+// Command adaptive-cache is the project's acceptance demo: it loads a
+// config file, constructs the cache with the named eviction policy,
+// drives a trivial synthetic request loop and prints a Frame as JSON
+// at the configured rate (default 10 Hz).
 //
-// Everything it prints comes from the observation layer — the cache itself has
-// no idea a frame emitter exists.
+// Everything it prints comes from the observation layer — the cache
+// itself has no idea a frame emitter exists. P2 added the policy
+// registry and the --policy flag; before P2 the cache ran with a nil
+// policy.
 package main
 
 import (
@@ -18,6 +21,7 @@ import (
 	"time"
 
 	"github.com/r1sh4bhh/adaptive-caching/cache"
+	"github.com/r1sh4bhh/adaptive-caching/cache/policy"
 	"github.com/r1sh4bhh/adaptive-caching/config"
 	"github.com/r1sh4bhh/adaptive-caching/events"
 	"github.com/r1sh4bhh/adaptive-caching/types"
@@ -34,11 +38,29 @@ func run() error {
 	configPath := flag.String("config", "configs/default.yaml", "path to the YAML config file")
 	duration := flag.Duration("duration", 5*time.Second, "how long to run before exiting")
 	seed := flag.Int64("seed", 1, "seed for the placeholder request generator")
+	policyName := flag.String("policy", "", "eviction policy (overrides cache.policy in the config; one of "+policyFlagChoices()+")")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
+	}
+	// CLI --policy overrides the config's cache.policy.
+	if *policyName != "" {
+		cfg.Cache.Policy = *policyName
+	}
+
+	// Resolve the policy by name. "none" means no policy at all
+	// (P1's behaviour); every other name must be registered.
+	var pol policy.EvictionPolicy
+	name := types.PolicyName(cfg.Cache.Policy)
+	if name != types.PolicyNone {
+		p, ok := policy.New(name)
+		if !ok {
+			return fmt.Errorf("unknown eviction policy %q (known: %v)",
+				cfg.Cache.Policy, policy.Names())
+		}
+		pol = p
 	}
 
 	bus := events.NewBus()
@@ -51,7 +73,7 @@ func run() error {
 
 	c := cache.New(cache.Options{
 		Capacity:          cfg.Cache.Capacity.Bytes(),
-		Policy:            nil, // P1 ships no eviction policies.
+		Policy:            pol,
 		Bus:               bus,
 		RequestSampleRate: cfg.Events.RequestSampleRate,
 	})
@@ -126,8 +148,11 @@ func buildFrame(c *cache.Core, cfg *config.Config, start, now time.Time, total t
 	}
 }
 
-// generate drives a placeholder request stream so the demo has something to
-// report. Real trace sources arrive in P3.
+// generate drives a placeholder request stream so the demo has
+// something to report. Real trace sources arrive in P3. With an
+// eviction policy installed (P2+), the stream exercises the policy:
+// objects are admitted, evicted, and the cache reaches a steady
+// hit rate that depends on the policy and the workload shape.
 func generate(ctx context.Context, c *cache.Core, seed int64) {
 	rng := rand.New(rand.NewSource(seed))
 	payload := make([]byte, 1024)
@@ -160,4 +185,17 @@ func drainEvents(ctx context.Context, ch <-chan events.Event) {
 			}
 		}
 	}
+}
+
+// policyFlagChoices returns a comma-separated list of every registered
+// policy name plus "none", for use in the --policy help text. The list
+// is computed at startup so adding a new policy in cache/policy/ shows
+// up automatically in the CLI's self-description.
+func policyFlagChoices() string {
+	names := policy.Names()
+	out := "none"
+	for _, n := range names {
+		out += ", " + string(n)
+	}
+	return out
 }

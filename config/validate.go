@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/r1sh4bhh/adaptive-caching/cache/policy"
+	"github.com/r1sh4bhh/adaptive-caching/types"
 )
 
 // validLogLevels are the accepted values of log.level.
@@ -22,7 +25,17 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("cache.capacity must be > 0 bytes, got %d", c.Cache.Capacity))
 	}
 	if c.Cache.Policy == "" {
-		errs = append(errs, errors.New(`cache.policy must not be empty (use "none" until P2 adds policies)`))
+		errs = append(errs, errors.New(`cache.policy must not be empty (use "none" for a nil-policy cache)`))
+	} else {
+		// Reject unknown policy names at config-load time. A typo
+		// should fail before the cache starts serving requests,
+		// not on the first call to Core.
+		name := types.PolicyName(c.Cache.Policy)
+		if name != types.PolicyNone && !policy.IsKnown(name) {
+			errs = append(errs, fmt.Errorf(
+				"cache.policy %q is not registered; known policies: %v",
+				c.Cache.Policy, policy.Names()))
+		}
 	}
 
 	if c.Events.BusBuffer <= 0 {

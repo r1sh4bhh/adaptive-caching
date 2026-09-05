@@ -11,10 +11,11 @@ cache:
   # (KiB/MiB/GiB/TiB) are powers of 1024, and a bare number is bytes.
   capacity: 100MB
 
-  # Eviction policy to install. P1 ships no policies; "none" runs the cache
-  # with a nil policy, which still admits objects while capacity allows and
-  # still records hits, misses and events.
-  policy: none
+  # Eviction policy to install. P2 ships LRU, LFU and Clock. "none" runs
+  # the cache with a nil policy, which still admits objects while
+  # capacity allows and still records hits, misses and events but never
+  # evicts. The CLI's --policy flag overrides this value.
+  policy: lru
 
 events:
   # Default per-subscriber channel capacity on the event bus. Publish never

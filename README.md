@@ -2,7 +2,7 @@
 
 A workload-aware adaptive cache framework that dynamically selects and tunes existing eviction policies according to observed workload characteristics.
 
-> 🚧 **Build Phase P2 — Baselines I (LRU / LFU / Clock)** in progress. P1 (Skeleton & Event Bus) is complete, tag `p01-complete`. See [`PROJECT_STATE.md`](PROJECT_STATE.md) for the phase ledger and next actions.
+> ✅ **Build Phase P2 — Baselines I (LRU / LFU / Clock)** complete, tag `p02-complete`. P1 (Skeleton & Event Bus) shipped the frozen interfaces and event bus. P2 wired three eviction policies — LRU, LFU with amortised ageing, and second-chance Clock — behind a self-registering policy registry, with a `--policy` CLI flag and config validation. Next: P3 (Traces & Benchmark). See [`PROJECT_STATE.md`](PROJECT_STATE.md) for the phase ledger and next actions.
 
 ## Concept
 
@@ -41,7 +41,7 @@ This is not a new eviction algorithm. It is a framework that selects and tunes e
 | `config/`, `configs/` | P1 | YAML config loading, validation, feature flags; `configs/default.yaml` and future `configs/experiments/` ablation configs |
 | `metrics/` | P1 | Atomic counters, lock-free latency histogram, payload-vs-metadata memory accounting, CSV/JSON output |
 | `cache/` | P1 | Frozen `Cache` and `EvictionPolicy` interfaces, byte-capacity object store, nil-safe cache core |
-| `cache/policy/` | P2+ | LRU, LFU, Clock (P2); ARC, W-TinyLFU and sketches (P4) |
+| `cache/policy/` | P2+ | LRU, LFU (with `decay_lambda`), Clock (P2); ARC, W-TinyLFU and sketches (P4) |
 | `cmd/adaptive-cache/` | P1 | Runs the cache against a config and prints `Frame` JSON at a fixed rate |
 | `cmd/bench/`, `cmd/analyze/` | P3, P5 | Headless benchmark runner and trace-to-feature-vector tool |
 | `trace/`, `scenarios/` | P3 | Seeded synthetic generators, CSV loader, scenario YAML replay with ground-truth transition marks |
@@ -70,12 +70,17 @@ make lint         # gofmt + go vet
 make lint-arch    # fails if cache/ transitively imports server/, tui/, benchmark/, adaptive/ or ui/
 ```
 
-Run the P1 acceptance demo, which drives the cache with a nil policy and prints `Frame` JSON at 10 Hz:
+Run the P2 acceptance demo, which drives the cache with the LRU policy (the default in `configs/default.yaml`) and prints `Frame` JSON at 10 Hz:
 
 ```bash
 make run
 # equivalent to:
 ./adaptive-cache --config configs/default.yaml --duration 5s
+# pick a different policy at the CLI; --policy overrides the config:
+./adaptive-cache --config configs/default.yaml --policy lfu --duration 5s
+./adaptive-cache --config configs/default.yaml --policy clock --duration 5s
+# or run with a nil policy (P1's behaviour):
+./adaptive-cache --config configs/default.yaml --policy none --duration 5s
 ```
 
 CI runs build, vet, test, test with the race detector, and the architecture lint on every push.

@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [P2] - 2026-09-05
+
+### Added
+- **`cache/policy/lru.go`** — the canonical LRU policy: doubly-linked
+  list + `map[string]*list.Element`, O(1) access, O(1) eviction. No
+  parameters exposed (none are genuinely tunable). Registered as
+  `lru`.
+- **`cache/policy/lfu.go`** — frequency-bucket LFU with amortised
+  ageing to mitigate the cold-start problem (context.md §5.1). Each
+  `OnAccess` increments a key's frequency, capped at `1<<16` to keep
+  counters bounded; every `floor(1/decay_lambda)` accesses, all
+  frequencies are halved. Exposes a single tunable: `decay_lambda`
+  (range [0,1], default 0.05, metric `hit_rate`). Registered as
+  `lfu`.
+- **`cache/policy/clock.go`** — second-chance Clock: ring buffer of
+  `clockSlot{key, ref, e}` plus a walking hand. The ring grows by
+  powers of two on demand and is never shrunk (the metadata cap is
+  what `MetadataBytes()` reports). No parameters (the Nth-chance
+  variants exist but are not part of this baseline). Registered as
+  `clock`.
+- **`cache/policy/registry.go`** — name → constructor map. Policies
+  self-register in `init()`; `policy.New(name)` resolves a name to a
+  fresh instance and `policy.Names()` lists the registered set.
+  Concurrent-read-safe via an `RWMutex`; writes only happen at
+  package-init time.
+- **`cache/policy/lru_test.go`, `lfu_test.go`, `clock_test.go`** —
+  table-driven tests against hand-computed eviction sequences, plus
+  rebuild round-trips, `Reset`/`MetadataBytes`/param round-trips,
+  empty-policy edge cases, and registry wiring.
+- **`tests/edge/edge_test.go`** — the five edge cases called out in
+  the P2 phase card: `cap=1`, `size=0`, `obj>cap`, duplicate
+  insert, empty policy. Each test runs against every shipped
+  policy so the assertions are the same in production.
+- **CLI `--policy` flag** on `cmd/adaptive-cache/main.go`. Overrides
+  `cache.policy` from the YAML config when supplied; the help text
+  enumerates the registered names at startup.
+- **Config validation** — `config/validate.go` now rejects policy
+  names that the registry does not know, with a clear error
+  listing the available choices. Replaces the previous free-form
+  string check.
+- **Default config** — `configs/default.yaml` ships with
+  `policy: lru` so the demo shows eviction actually happening.
+
+### Notes
+- The LRU and LFU `MetadataBytes()` reports a conservative
+  per-entry estimate (64 bytes/entry) so the <5% metadata-overhead
+  target is not gamed. Clock reports `24 * ring_capacity`, which
+  includes the unused tail of the ring (honest accounting for the
+  power-of-two growth strategy).
+- P2 ships no workload detection, adaptive engine, or multi-tier
+  logic. Those are P3+.
+- The frozen `EvictionPolicy` interface from P1 is unchanged.
+  Policies differ in their `Params()` output, not the contract.
+
 ## [P1] - 2026-08-25
 
 ### Added
